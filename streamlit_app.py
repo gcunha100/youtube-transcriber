@@ -9,15 +9,22 @@ import zipfile
 st.set_page_config(page_title="YouTube Transcriber", page_icon="🎥")
 st.title('YouTube Transcriber')
 st.write('Transcreva vídeos do YouTube facilmente!')
-
 # Configuração segura da API Key
-try:
     API_KEY = st.secrets["youtube_api_key"]
-except Exception as e:
+    # Teste inicial da API
+    youtube = build('youtube', 'v3', developerKey=API_KEY)
+    test_response = youtube.search().list(
+        part='snippet',
+        q='test',
+        maxResults=1
+    ).execute()
+    st.sidebar.success("✅ API do YouTube conectada!")
+except KeyError:
     st.error("Erro: API Key não configurada corretamente nos secrets.")
     st.stop()
-
-def extract_video_id(url):
+except Exception as e:
+    st.error(f"❌ Erro na API do YouTube: {str(e)}")
+    st.stop()
     try:
         if 'youtu.be' in url:
             return url.split('/')[-1]
@@ -260,3 +267,4 @@ else:
 # Rodapé
 st.markdown("---")
 st.markdown("Desenvolvido com ❤️ por GMC")
+
