@@ -5,6 +5,7 @@ import isodate
 import io
 import zipfile
 
+# Configuração inicial
 st.set_page_config(page_title="YouTube Transcriber", page_icon="🎥")
 st.title('YouTube Transcriber')
 st.write('Transcreva vídeos do YouTube facilmente!')
@@ -12,6 +13,7 @@ st.write('Transcreva vídeos do YouTube facilmente!')
 # Sua API Key do YouTube
 API_KEY = "SUA_API_KEY"
 
+# Funções auxiliares
 def extract_video_id(url):
     try:
         if 'youtu.be' in url:
@@ -19,7 +21,7 @@ def extract_video_id(url):
         elif 'youtube.com' in url:
             return url.split('v=')[1].split('&')[0]
         return None
-    except:
+    except Exception:
         return None
 
 def get_video_duration(youtube, video_id):
@@ -28,20 +30,17 @@ def get_video_duration(youtube, video_id):
             part='contentDetails',
             id=video_id
         ).execute()
-        
         if response['items']:
             duration = response['items'][0]['contentDetails']['duration']
             seconds = isodate.parse_duration(duration).total_seconds()
             return seconds
         return 0
-    except:
+    except Exception:
         return 0
 
 def get_channel_videos(channel_name, video_type):
     try:
         youtube = build('youtube', 'v3', developerKey=API_KEY)
-        
-        # Busca o ID do canal
         channel_response = youtube.search().list(
             part='snippet',
             q=channel_name,
@@ -56,6 +55,7 @@ def get_channel_videos(channel_name, video_type):
         channel_id = channel_response['items'][0]['snippet']['channelId']
         videos = []
         next_page_token = None
+        
         with st.spinner('Buscando vídeos...'):
             progress_bar = st.progress(0)
             videos_checked = 0
@@ -73,8 +73,7 @@ def get_channel_videos(channel_name, video_type):
                     video_id = item['id']['videoId']
                     duration = get_video_duration(youtube, video_id)
                     
-                    # Filtrar por duração
-                    if video_type == "Vídeos Longos (>10min)" and duration > 600:  # 10 minutos
+                    if video_type == "Vídeos Longos (>10min)" and duration > 600:
                         videos.append(video_id)
                     elif video_type == "Vídeos Curtos (<10min)" and duration <= 600:
                         videos.append(video_id)
@@ -83,31 +82,33 @@ def get_channel_videos(channel_name, video_type):
                     progress_bar.progress(min(videos_checked/200, 1.0))
                 
                 next_page_token = video_response.get('nextPageToken')
-                if not next_page_token or videos_checked >= 200:  # Limite de 200 vídeos
+                if not next_page_token or videos_checked >= 200:
                     break
                         
         return videos
-            except Exception as e:
+    except Exception as e:
         st.error(f"Erro ao buscar vídeos: {str(e)}")
         return []
 
+# Interface principal
 transcription_type = st.radio(
     "O que você deseja transcrever?",
     ["Um vídeo específico", "Vídeos de um canal"],
     horizontal=True
 )
 
+# Lógica para vídeo único
 if transcription_type == "Um vídeo específico":
     video_url = st.text_input(
-        'Cole a URL do vídeo:', 
+        'Cole a URL do vídeo:',
         placeholder='Ex: https://www.youtube.com/watch?v=...'
     )
     
     if st.button('Transcrever', type='primary'):
         if video_url:
-            try:
-                video_id = extract_video_id(video_url)
-                if video_id:
+            video_id = extract_video_id(video_url)
+            if video_id:
+                try:
                     with st.spinner('Gerando transcrição...'):
                         transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['pt', 'en'])
                         text = '\n'.join([entry['text'] for entry in transcript])
@@ -124,19 +125,20 @@ if transcription_type == "Um vídeo específico":
                         if st.checkbox("Visualizar transcrição"):
                             st.write("### Transcrição:")
                             st.write(text)
-else:
-                    st.error("URL do vídeo inválida!")
-            except Exception as e:
-                st.error(f"Erro ao transcrever o vídeo: {str(e)}")
+                except Exception as e:
+                    st.error(f"Erro ao transcrever o vídeo: {str(e)}")
+            else:
+                st.error("URL do vídeo inválida!")
         else:
             st.warning("Por favor, insira a URL do vídeo!")
 
+# Lógica para canal
 else:
     col1, col2 = st.columns([3, 1])
     
     with col1:
         channel = st.text_input(
-            'Nome ou URL do Canal:', 
+            'Nome ou URL do Canal:',
             placeholder='Ex: @NomeDoCanal ou youtube.com/@NomeDoCanal'
         )
     
@@ -165,13 +167,12 @@ else:
                             'text': text
                         })
                         progress_bar.progress((i + 1) / len(videos))
-                    except:
+                    except Exception:
                         st.warning(f"Não foi possível transcrever o vídeo: {video_id}")
                 
                 if transcripts:
                     st.success("Transcrições geradas com sucesso!")
                     
-                    # Opções de download
                     download_option = st.radio(
                         "Como deseja baixar as transcrições?",
                         ["Arquivo Único", "Arquivos Separados (ZIP)"]
@@ -203,7 +204,6 @@ else:
                             mime="application/zip"
                         )
                     
-                    # Opção para visualizar
                     if st.checkbox("Visualizar transcrições"):
                         for t in transcripts:
                             with st.expander(f"Vídeo: {t['video_id']}"):
@@ -212,5 +212,7 @@ else:
                 st.error("Nenhum vídeo encontrado!")
         else:
             st.warning("Por favor, insira o nome ou URL do canal!")
+
+# Rodapé
 st.markdown("---")
-st.markdown("Desenvolvido com ❤️ por [Seu Nome]")
+st.markdown("Desenvolvido com ❤️ por GMC")
