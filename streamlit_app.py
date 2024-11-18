@@ -5,12 +5,10 @@ import isodate
 import io
 import zipfile
 
-# Configuração inicial
 st.set_page_config(page_title="YouTube Transcriber", page_icon="🎥")
 st.title('YouTube Transcriber')
 st.write('Transcreva vídeos do YouTube facilmente!')
 
-# Configuração segura da API Key
 API_KEY = st.secrets["youtube_api_key"]
 youtube = build('youtube', 'v3', developerKey=API_KEY)
 test_response = youtube.search().list(
@@ -46,103 +44,82 @@ def get_video_duration(youtube, video_id):
 
 def get_channel_videos(channel_name, video_type):
     try:
-        # Debug para ver o que está sendo enviado
-        st.sidebar.write("Buscando canal:", channel_name)
-        st.sidebar.write("Tipo de vídeo:", video_type)
-
         youtube = build('youtube', 'v3', developerKey=API_KEY)
         
-        # Tenta primeiro buscar como handle do YouTube
         if '@' in channel_name:
-            channel_handle = channel_name.split('@')[-1]
-            channel_response = youtube.search().list(
-                part='snippet',
-                q=f"@{channel_handle}",
-                type='channel',
-                maxResults=1
-            ).execute()
+            channel_handle = channel_name.split('@')[-1].split('/')[-1]
+            search_query = f"@{channel_handle}"
         else:
-            # Se não for handle, busca como nome normal
-            channel_response = youtube.search().list(
-                part='snippet',
-                q=channel_name,
-                type='channel',
-                maxResults=1
-            ).execute()
+            search_query = channel_name
 
+        st.write(f"Buscando canal: {search_query}")
+        
+        channel_response = youtube.search().list(
+            part='snippet',
+            q=search_query,
+            type='channel',
+            maxResults=1
+                ).execute()
+                
         if not channel_response.get('items'):
-            st.error(f"Canal não encontrado: {channel_name}")
-            return []
+            st.error("Canal não encontrado!")
+        return []
 
         channel_id = channel_response['items'][0]['snippet']['channelId']
         channel_title = channel_response['items'][0]['snippet']['title']
         
-        # Mostra informações do canal encontrado
-        st.write(f"Canal encontrado: {channel_title}")
-        st.write(f"ID do canal: {channel_id}")
-
-        videos = []
-        next_page_token = None
+        st.success(f"Canal encontrado: {channel_title}")
         
+        videos = []
         with st.spinner('Buscando vídeos...'):
-            progress_bar = st.progress(0)
-            videos_checked = 0
+            playlist_response = youtube.channels().list(
+                part='contentDetails',
+                id=channel_id
+            ).execute()
             
-            while True:
-                video_response = youtube.search().list(
-                    part='id,snippet',
-                    channelId=channel_id,
-                    maxResults=50,
-                    type='video',
-                    pageToken=next_page_token,
-                    order='date'  # Ordenar por data
-                ).execute()
+            if playlist_response['items']:
+                uploads_playlist_id = playlist_response['items'][0]['contentDetails']['relatedPlaylists']['uploads']
                 
-                for item in video_response['items']:
-                    video_id = item['id']['videoId']
-                    video_title = item['snippet']['title']
+                next_page_token = None
+                while True:
+                    playlist_items = youtube.playlistItems().list(
+                        part='snippet',
+                        playlistId=uploads_playlist_id,
+                        maxResults=50,
+                        pageToken=next_page_token
+                    ).execute()
                     
-                    # Debug para ver cada vídeo encontrado
-                    st.sidebar.write(f"Verificando vídeo: {video_title}")
+                    for item in playlist_items['items']:
+                        video_id = item['snippet']['resourceId']['videoId']
+                        duration = get_video_duration(youtube, video_id)
+                        
+                        if video_type == "Vídeos Longos (>10min)" and duration > 600:
+                            videos.append({
+                                'id': video_id,
+                                'title': item['snippet']['title']
+                            })
+                        elif video_type == "Vídeos Curtos (<10min)" and duration <= 600:
+                            videos.append({
+                                'id': video_id,
+                                'title': item['snippet']['title']
+                            })
                     
-                    duration = get_video_duration(youtube, video_id)
-                    
-                    if video_type == "Vídeos Longos (>10min)" and duration > 600:
-                        videos.append({
-                            'id': video_id,
-                            'title': video_title,
-                            'duration': duration
-                        })
-                    elif video_type == "Vídeos Curtos (<10min)" and duration <= 600:
-                        videos.append({
-                            'id': video_id,
-                            'title': video_title,
-                            'duration': duration
-                        })
-                    
-                    videos_checked += 1
-                    progress_bar.progress(min(videos_checked/200, 1.0))
-                
-                next_page_token = video_response.get('nextPageToken')
-                if not next_page_token or videos_checked >= 200:  # Limite de 200 vídeos
-                    break
-            
-            st.write(f"Total de vídeos encontrados: {len(videos)}")
-            return videos
-
+                    next_page_token = playlist_items.get('nextPageToken')
+                    if not next_page_token or len(videos) >= 200:
+                        break
+        
+        return videos
+        
     except Exception as e:
-        st.error(f"Erro ao buscar vídeos: {str(e)}")
-        st.write("Detalhes do erro para debug:", str(e))
+        st.error(f"Erro ao buscar canal: {str(e)}")
         return []
 
-# Interface principal
 transcription_type = st.radio(
     "O que você deseja transcrever?",
     ["Um vídeo específico", "Vídeos de um canal"],
     horizontal=True
 )
 
-# Lógica para vídeo único
 if transcription_type == "Um vídeo específico":
     video_url = st.text_input(
         'Cole a URL do vídeo:',
@@ -166,17 +143,41 @@ if transcription_type == "Um vídeo específico":
                             file_name=f"transcricao_{video_id}.txt",
                             mime="text/plain"
                         )
-                        
-                        st.write("### Visualizar Transcrição:")
-                        st.write(text)
                 except Exception as e:
                     st.error(f"Erro ao transcrever o vídeo: {str(e)}")
         else:
-            st.error("URL do vídeo inválida!")
-    else:
+                st.error("URL do vídeo inválida!")
+    video_url = st.text_input(
+        'Cole a URL do vídeo:',
+        placeholder='Ex: https://www.youtube.com/watch?v=...'
+    )
+    
+    if st.button('Transcrever', type='primary'):
+        if not video_url:
             st.warning("Por favor, insira a URL do vídeo!")
-        
-# Lógica para canal
+            st.stop()
+            
+        video_id = extract_video_id(video_url)
+        if not video_id:
+            st.error("URL do vídeo inválida!")
+            st.stop()
+            
+        try:
+            with st.spinner('Gerando transcrição...'):
+                transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['pt', 'en'])
+                text = '\n'.join([entry['text'] for entry in transcript])
+                
+                st.success("Transcrição gerada com sucesso!")
+                
+                st.download_button(
+                    label="📄 Download da Transcrição",
+                    data=f"Vídeo: {video_url}\n\n{text}",
+                    file_name=f"transcricao_{video_id}.txt",
+                    mime="text/plain"
+                )
+        except Exception as e:
+            st.error(f"Erro ao transcrever o vídeo: {str(e)}")
+
 else:
     col1, col2 = st.columns([3, 1])
     
@@ -201,6 +202,7 @@ else:
                 st.success(f"Encontrados {len(videos)} vídeos!")
                 
                 transcripts = []
+                videos_sem_legenda = []
                 progress_bar = st.progress(0)
                 
                 for i, video in enumerate(videos):
@@ -212,13 +214,18 @@ else:
                             'title': video['title'],
                             'text': text
                         })
-                        progress_bar.progress((i + 1) / len(videos))
                     except Exception as e:
-                        st.warning(f"Não foi possível transcrever o vídeo: {video['title']}")
-                        st.sidebar.write(f"Erro na transcrição: {str(e)}")
+                        videos_sem_legenda.append(video['title'])
+                    finally:
+                        progress_bar.progress((i + 1) / len(videos))
                 
+                # Mostra resumo
                 if transcripts:
-                    st.success("Transcrições geradas com sucesso!")
+                    st.success(f"Transcrições geradas com sucesso! ({len(transcripts)} vídeos)")
+                    if videos_sem_legenda:
+                        st.warning(f"Não foi possível transcrever {len(videos_sem_legenda)} vídeos por falta de legendas:")
+                        for titulo in videos_sem_legenda:
+                            st.write(f"- {titulo}")
                     
                     download_option = st.radio(
                         "Como deseja baixar as transcrições?",
@@ -232,7 +239,7 @@ else:
                         ])
                         
                         st.download_button(
-                            label="📄 Download Arquivo Único",
+                            label=f"📄 Download Arquivo Único ({len(transcripts)} transcrições)",
                             data=all_text,
                             file_name="todas_transcricoes.txt",
                             mime="text/plain"
@@ -245,21 +252,16 @@ else:
                                 zip_file.writestr(f"transcricao_{t['video_id']}.txt", content)
                         
                         st.download_button(
-                            label="📚 Download ZIP",
+                            label=f"📚 Download ZIP ({len(transcripts)} arquivos)",
                             data=zip_buffer.getvalue(),
                             file_name="transcricoes.zip",
                             mime="application/zip"
                         )
-                    
-                    if st.checkbox("Visualizar transcrições"):
-                        for t in transcripts:
-                            with st.expander(f"Vídeo: {t['title']}"):
-                                st.write(t['text'])
+                else:
+                    st.error("Nenhum dos vídeos possui legendas disponíveis!")
             else:
                 st.error("Nenhum vídeo encontrado!")
         else:
             st.warning("Por favor, insira o nome ou URL do canal!")
-
-# Rodapé
 st.markdown("---")
 st.markdown("Desenvolvido com ❤️ por GMC")
