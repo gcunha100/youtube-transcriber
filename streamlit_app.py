@@ -115,6 +115,7 @@ if transcription_type == "Um vídeo específico":
                         
                         st.success("Transcrição gerada com sucesso!")
                         
+                        # Primeiro o botão de download
                         st.download_button(
                             label="📄 Download da Transcrição",
                             data=f"Vídeo: {video_url}\n\n{text}",
@@ -122,9 +123,10 @@ if transcription_type == "Um vídeo específico":
                             mime="text/plain"
                         )
                         
-                        if st.checkbox("Visualizar transcrição"):
-                            st.write("### Transcrição:")
-                            st.write(text)
+                        # Depois a visualização
+                        st.write("### Visualizar Transcrição:")
+                        st.write(text)  # Mostra a transcrição diretamente
+                        
                 except Exception as e:
                     st.error(f"Erro ao transcrever o vídeo: {str(e)}")
             else:
@@ -213,6 +215,6 @@ else:
         else:
             st.warning("Por favor, insira o nome ou URL do canal!")
 
-# Rodapé
+# Rodapé atualizado
 st.markdown("---")
 st.markdown("Desenvolvido com ❤️ por GMC")
