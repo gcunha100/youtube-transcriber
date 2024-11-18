@@ -117,42 +117,18 @@ def get_channel_videos(channel_name, video_type):
 transcription_type = st.radio(
     "O que você deseja transcrever?",
     ["Um vídeo específico", "Vídeos de um canal"],
-    horizontal=True
+    horizontal=True,
+    key="transcription_type_radio"
 )
 
 if transcription_type == "Um vídeo específico":
     video_url = st.text_input(
         'Cole a URL do vídeo:',
-        placeholder='Ex: https://www.youtube.com/watch?v=...'
+        placeholder='Ex: https://www.youtube.com/watch?v=...',
+        key="single_video_url"
     )
     
-    if st.button('Transcrever', type='primary'):
-        if video_url:
-            video_id = extract_video_id(video_url)
-            if video_id:
-                try:
-                    with st.spinner('Gerando transcrição...'):
-                        transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['pt', 'en'])
-                        text = '\n'.join([entry['text'] for entry in transcript])
-                        
-                        st.success("Transcrição gerada com sucesso!")
-                        
-                        st.download_button(
-                            label="📄 Download da Transcrição",
-                            data=f"Vídeo: {video_url}\n\n{text}",
-                            file_name=f"transcricao_{video_id}.txt",
-                            mime="text/plain"
-                        )
-                except Exception as e:
-                    st.error(f"Erro ao transcrever o vídeo: {str(e)}")
-        else:
-                st.error("URL do vídeo inválida!")
-    video_url = st.text_input(
-        'Cole a URL do vídeo:',
-        placeholder='Ex: https://www.youtube.com/watch?v=...'
-    )
-    
-    if st.button('Transcrever', type='primary'):
+    if st.button('Transcrever', type='primary', key="single_video_button"):
         if not video_url:
             st.warning("Por favor, insira a URL do vídeo!")
             st.stop()
@@ -173,7 +149,8 @@ if transcription_type == "Um vídeo específico":
                     label="📄 Download da Transcrição",
                     data=f"Vídeo: {video_url}\n\n{text}",
                     file_name=f"transcricao_{video_id}.txt",
-                    mime="text/plain"
+                    mime="text/plain",
+                    key="single_video_download"
                 )
         except Exception as e:
             st.error(f"Erro ao transcrever o vídeo: {str(e)}")
@@ -184,16 +161,18 @@ else:
     with col1:
         channel = st.text_input(
             'Nome ou URL do Canal:',
-            placeholder='Ex: @NomeDoCanal ou digite o nome do canal'
+            placeholder='Ex: @NomeDoCanal ou digite o nome do canal',
+            key="channel_input"
         )
     
     with col2:
         video_type = st.selectbox(
             'Tipo de Vídeos:',
-            ['Vídeos Longos (>10min)', 'Vídeos Curtos (<10min)']
+            ['Vídeos Longos (>10min)', 'Vídeos Curtos (<10min)'],
+            key="video_type_select"
         )
     
-    if st.button('Buscar Vídeos', type='primary'):
+    if st.button('Buscar Vídeos', type='primary', key="channel_button"):
         if channel:
             st.write("Iniciando busca...")
             videos = get_channel_videos(channel, video_type)
@@ -203,7 +182,7 @@ else:
                 
                 transcripts = []
                 videos_sem_legenda = []
-                progress_bar = st.progress(0)
+                progress_bar = st.progress(0, key="transcription_progress")
                 
                 for i, video in enumerate(videos):
                     try:
@@ -229,7 +208,8 @@ else:
                     
                     download_option = st.radio(
                         "Como deseja baixar as transcrições?",
-                        ["Arquivo Único", "Arquivos Separados (ZIP)"]
+                        ["Arquivo Único", "Arquivos Separados (ZIP)"],
+                        key="download_option_radio"
                     )
                     
                     if download_option == "Arquivo Único":
@@ -242,7 +222,8 @@ else:
                             label=f"📄 Download Arquivo Único ({len(transcripts)} transcrições)",
                             data=all_text,
                             file_name="todas_transcricoes.txt",
-                            mime="text/plain"
+                            mime="text/plain",
+                            key="channel_single_download"
                         )
                     else:
                         zip_buffer = io.BytesIO()
@@ -255,7 +236,8 @@ else:
                             label=f"📚 Download ZIP ({len(transcripts)} arquivos)",
                             data=zip_buffer.getvalue(),
                             file_name="transcricoes.zip",
-                            mime="application/zip"
+                            mime="application/zip",
+                            key="channel_zip_download"
                         )
                 else:
                     st.error("Nenhum dos vídeos possui legendas disponíveis!")
@@ -263,5 +245,6 @@ else:
                 st.error("Nenhum vídeo encontrado!")
         else:
             st.warning("Por favor, insira o nome ou URL do canal!")
+
 st.markdown("---")
 st.markdown("Desenvolvido com ❤️ por GMC")
