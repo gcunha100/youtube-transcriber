@@ -2,17 +2,23 @@ import streamlit as st
 from googleapiclient.discovery import build
 from youtube_transcript_api import YouTubeTranscriptApi
 import isodate
-import os
+import io
+import zipfile
 
 # Configuração da página
-st.set_page_config(page_title="YouTube Transcriber", page_icon="🎥")
+st.set_page_config(
+    page_title="YouTube Transcriber",
+    page_icon="🎥",
+    layout="wide"
+)
 
 # Título e descrição
 st.title('YouTube Transcriber')
 st.write('Transcreva vídeos do YouTube facilmente!')
 
-# API Key
+# Usar secrets para a API key
 API_KEY = st.secrets["youtube_api_key"]
+
 def get_video_duration(youtube, video_id):
     try:
         response = youtube.videos().list(
@@ -61,7 +67,7 @@ def get_videos(channel_name, video_type):
                 pageToken=next_page_token
             ).execute()
             
-            for item in video_response['items']:
+            for item in response['items']:
                 video_id = item['id']['videoId']
                 duration = get_video_duration(youtube, video_id)
                 
@@ -108,47 +114,136 @@ def get_transcripts(video_ids):
     
     return transcripts
 
-# Interface do usuário
-channel = st.text_input('URL do Canal ou Nome:')
-video_type = st.selectbox(
-    'Tipo de Vídeos:',
-    ['Todos os Vídeos', 'Vídeos Longos (>1h)', 'Shorts (<2min)']
-)
+def extract_video_id(url):
+    try:
+        if 'youtu.be' in url:
+            return url.split('/')[-1]
+        elif 'youtube.com' in url:
+            return url.split('v=')[1].split('&')[0]
+        return None
+    except:
+        return None
 
-if st.button('Transcrever'):
-    if channel:
-        with st.spinner('Buscando vídeos...'):
-            videos = get_videos(channel, video_type)
-            
-            if videos:
-                st.success(f"Encontrados {len(videos)} vídeos!")
-                
-                with st.spinner('Gerando transcrições...'):
-                    transcripts = get_transcripts(videos)
-                    
-                    if transcripts:
-                        # Combina todas as transcrições em um texto
-                        all_text = "\n\n".join([
-                            f"Vídeo: https://www.youtube.com/watch?v={t['video_id']}\n{t['text']}"
-                            for t in transcripts
-                        ])
-                        
-                        # Mostra botão para download
-                        st.download_button(
-                            label="Download das Transcrições",
-                            data=all_text,
-                            file_name="transcricoes.txt",
-                            mime="text/plain"
-                        )
-                        
-                        # Mostra as transcrições na tela
-                        st.write("### Transcrições:")
-                        for t in transcripts:
-                            with st.expander(f"Vídeo: {t['video_id']}"):
-                                st.write(t['text'])
-                    else:
-                        st.error("Não foi possível gerar as transcrições.")
+# Interface do usuário
+with st.container():
+    # Opção de escolha entre canal ou vídeo único
+    input_type = st.radio(
+        "O que você deseja transcrever?",
+        ["Um vídeo específico", "Vídeos de um canal"]
+            )
+        
+    if input_type == "Um vídeo específico":
+        video_url = st.text_input(
+            'URL do Vídeo:', 
+            placeholder='Ex: https://www.youtube.com/watch?v=...'
+            )
+        
+        if st.button('Transcrever Vídeo', type='primary'):
+            if video_url:
+                video_id = extract_video_id(video_url)
+                if video_id:
+                    with st.spinner('Gerando transcrição...'):
+                        try:
+                            transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['pt', 'en'])
+                            text = '\n'.join([entry['text'] for entry in transcript])
+                            st.success("Transcrição gerada com sucesso!")
+                                
+                                # Opções de download
+                            st.download_button(
+                                label="📄 Download da Transcrição",
+                                data=f"Vídeo: {video_url}\n\n{text}",
+                                file_name=f"transcricao_{video_id}.txt",
+                                mime="text/plain"
+                            )
+                            # Mostrar transcrição na tela
+                            if st.checkbox("Mostrar transcrição na tela"):
+                                st.write("### Transcrição:")
+                                st.write(text)
+                                    
+                        except Exception as e:
+                            st.error(f"Não foi possível transcrever o vídeo: {str(e)}")
+                    st.error("URL do vídeo inválida. Certifique-se de usar uma URL do YouTube válida.")
             else:
-                st.error("Nenhum vídeo encontrado!")
+                st.warning("Por favor, insira a URL do vídeo!")
+
     else:
-        st.warning("Por favor, insira um canal!")
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            channel = st.text_input(
+                'URL do Canal ou Nome:', 
+                placeholder='Ex: @NomeDoCanal ou youtube.com/@NomeDoCanal'
+            )
+        
+        with col2:
+            video_type = st.selectbox(
+                'Tipo de Vídeos:',
+                ['Todos os Vídeos', 'Vídeos Longos (>1h)', 'Shorts (<2min)']
+            )
+        
+        if st.button('Transcrever Canal', type='primary'):
+            if channel:
+                with st.spinner('Buscando vídeos...'):
+                    videos = get_videos(channel, video_type)
+                    
+                    if videos:
+                        st.success(f"Encontrados {len(videos)} vídeos!")
+                        
+                        with st.spinner('Gerando transcrições...'):
+                            transcripts = get_transcripts(videos)
+                            
+                            if transcripts:
+                                st.success("Transcrições geradas com sucesso!")
+                                
+                                # Opções de download
+                                st.write("### Opções de Download:")
+                                download_option = st.radio(
+                                    "Escolha como deseja baixar as transcrições:",
+                                    ["Arquivo único", "Arquivos separados (ZIP)"]
+                                )
+                                
+                                if download_option == "Arquivo único":
+                                    # Combina todas as transcrições em um único texto
+                                    all_text = "\n\n" + "="*80 + "\n\n".join([
+                                        f"Vídeo: https://www.youtube.com/watch?v={t['video_id']}\n\n{t['text']}"
+                                        for t in transcripts
+                                    ])
+                                    
+                                    st.download_button(
+                                        label="📄 Download Arquivo Único",
+                                        data=all_text,
+                                        file_name="todas_transcricoes.txt",
+                                        mime="text/plain"
+                                    )
+                                else:
+                                    # Cria um arquivo ZIP com transcrições separadas
+                                    zip_buffer = io.BytesIO()
+                                    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                                        for t in transcripts:
+                                            content = f"Vídeo: https://www.youtube.com/watch?v={t['video_id']}\n\n{t['text']}"
+                                            zip_file.writestr(f"transcricao_{t['video_id']}.txt", content)
+                                    
+                                    st.download_button(
+                                        label="📚 Download Arquivos Separados (ZIP)",
+                                        data=zip_buffer.getvalue(),
+                                        file_name="transcricoes.zip",
+                                        mime="application/zip"
+                                    )
+                                
+                                # Mostra as transcrições na tela
+                                show_transcripts = st.checkbox("Mostrar transcrições na tela")
+                                if show_transcripts:
+                                    st.write("### Transcrições:")
+                                    for t in transcripts:
+                                        with st.expander(f"Vídeo: https://www.youtube.com/watch?v={t['video_id']}"):
+                                            st.write(t['text'])
+                            else:
+                                st.error("Não foi possível gerar as transcrições.")
+                    else:
+                        st.error("Nenhum vídeo encontrado!")
+            else:
+                st.warning("Por favor, insira um canal!")
+
+# Rodapé
+st.markdown("---")
+st.markdown("Desenvolvido com ❤️ por [Seu Nome]")
