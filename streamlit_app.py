@@ -9,15 +9,13 @@ st.set_page_config(page_title="YouTube Transcriber", page_icon="🎥")
 st.title('YouTube Transcriber')
 st.write('Transcreva vídeos do YouTube facilmente!')
 
-API_KEY = st.secrets["youtube_api_key"]
-youtube = build('youtube', 'v3', developerKey=API_KEY)
-test_response = youtube.search().list(
-    part='snippet',
-    q='test',
-    maxResults=1
-).execute()
-st.sidebar.success("✅ API do YouTube conectada!")
-
+try:
+    API_KEY = st.secrets["youtube_api_key"]
+    youtube = build('youtube', 'v3', developerKey=API_KEY)
+    except Exception as e:
+    st.error("❌ Erro ao configurar API do YouTube. Verifique sua API key.")
+    st.stop()
+            
 def extract_video_id(url):
     try:
         if 'youtu.be' in url:
@@ -29,7 +27,7 @@ def extract_video_id(url):
         return None
 
 def get_video_duration(youtube, video_id):
-    try:
+                    try:
         response = youtube.videos().list(
             part='contentDetails',
             id=video_id
@@ -49,7 +47,7 @@ def get_channel_videos(channel_name, video_type):
         if '@' in channel_name:
             channel_handle = channel_name.split('@')[-1].split('/')[-1]
             search_query = f"@{channel_handle}"
-        else:
+                    else:
             search_query = channel_name
 
         st.write(f"Buscando canal: {search_query}")
@@ -59,11 +57,11 @@ def get_channel_videos(channel_name, video_type):
             q=search_query,
             type='channel',
             maxResults=1
-                ).execute()
-                
+        ).execute()
+
         if not channel_response.get('items'):
             st.error("Canal não encontrado!")
-        return []
+            return []
 
         channel_id = channel_response['items'][0]['snippet']['channelId']
         channel_title = channel_response['items'][0]['snippet']['title']
@@ -114,6 +112,7 @@ def get_channel_videos(channel_name, video_type):
         st.error(f"Erro ao buscar canal: {str(e)}")
         return []
 
+# Interface principal
 transcription_type = st.radio(
     "O que você deseja transcrever?",
     ["Um vídeo específico", "Vídeos de um canal"],
@@ -132,7 +131,7 @@ if transcription_type == "Um vídeo específico":
         if not video_url:
             st.warning("Por favor, insira a URL do vídeo!")
             st.stop()
-            
+
         video_id = extract_video_id(video_url)
         if not video_id:
             st.error("URL do vídeo inválida!")
@@ -198,7 +197,6 @@ else:
                     finally:
                         progress_bar.progress((i + 1) / len(videos))
                 
-                # Mostra resumo
                 if transcripts:
                     st.success(f"Transcrições geradas com sucesso! ({len(transcripts)} vídeos)")
                     if videos_sem_legenda:
