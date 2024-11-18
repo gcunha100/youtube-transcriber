@@ -10,22 +10,30 @@ st.set_page_config(page_title="YouTube Transcriber", page_icon="🎥")
 st.title('YouTube Transcriber')
 st.write('Transcreva vídeos do YouTube facilmente!')
 
-# Sua API Key do YouTube
-API_KEY = "SUA_API_KEY"
+# Configuração segura da API Key
+try:
+    API_KEY = st.secrets["youtube_api_key"]
+except Exception as e:
+    st.error("Erro: API Key não configurada corretamente nos secrets.")
+    st.stop()
 
-# Funções auxiliares
 def extract_video_id(url):
+    if not url:
+        return None
     try:
         if 'youtu.be' in url:
-            return url.split('/')[-1]
+            video_id = url.split('/')[-1].split('?')[0]
+            return video_id
         elif 'youtube.com' in url:
-            return url.split('v=')[1].split('&')[0]
+            if 'v=' in url:
+                video_id = url.split('v=')[1].split('&')[0]
+                return video_id
+            elif '/embed/' in url:
+                video_id = url.split('/embed/')[1].split('?')[0]
+                return video_id
         return None
     except Exception:
         return None
-
-def get_video_duration(youtube, video_id):
-    try:
         response = youtube.videos().list(
             part='contentDetails',
             id=video_id
@@ -84,8 +92,8 @@ def get_channel_videos(channel_name, video_type):
                 next_page_token = video_response.get('nextPageToken')
                 if not next_page_token or videos_checked >= 200:
                     break
-                        
-        return videos
+            
+            return videos
     except Exception as e:
         st.error(f"Erro ao buscar vídeos: {str(e)}")
         return []
@@ -115,7 +123,6 @@ if transcription_type == "Um vídeo específico":
                         
                         st.success("Transcrição gerada com sucesso!")
                         
-                        # Primeiro o botão de download
                         st.download_button(
                             label="📄 Download da Transcrição",
                             data=f"Vídeo: {video_url}\n\n{text}",
@@ -123,10 +130,8 @@ if transcription_type == "Um vídeo específico":
                             mime="text/plain"
                         )
                         
-                        # Depois a visualização
                         st.write("### Visualizar Transcrição:")
-                        st.write(text)  # Mostra a transcrição diretamente
-                        
+                        st.write(text)
                 except Exception as e:
                     st.error(f"Erro ao transcrever o vídeo: {str(e)}")
             else:
@@ -150,28 +155,29 @@ else:
             ['Vídeos Longos (>10min)', 'Vídeos Curtos (<10min)']
         )
     
-    if st.button('Buscar Vídeos', type='primary'):
-        if channel:
-            videos = get_channel_videos(channel, video_type)
+if st.button('Buscar Vídeos', type='primary'):
+    if channel:
+        videos = get_channel_videos(channel, video_type)
+        
+        if videos:
+            st.success(f"Encontrados {len(videos)} vídeos!")
             
-            if videos:
-                st.success(f"Encontrados {len(videos)} vídeos!")
-                
-                transcripts = []
-                progress_bar = st.progress(0)
-                
-                for i, video_id in enumerate(videos):
-                    try:
-                        transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['pt', 'en'])
-                        text = '\n'.join([entry['text'] for entry in transcript])
-                        transcripts.append({
-                            'video_id': video_id,
-                            'text': text
-                        })
-                        progress_bar.progress((i + 1) / len(videos))
-                    except Exception:
-                        st.warning(f"Não foi possível transcrever o vídeo: {video_id}")
-                
+            transcripts = []
+            progress_bar = st.progress(0)
+            
+            for i, video in enumerate(videos):
+                try:
+                    transcript = YouTubeTranscriptApi.get_transcript(video['id'], languages=['pt', 'en'])
+                    text = '\n'.join([entry['text'] for entry in transcript])
+                    transcripts.append({
+                        'video_id': video['id'],
+                        'title': video['title'],
+                        'text': text
+                    })
+                    progress_bar.progress((i + 1) / len(videos))
+                except:
+                    st.warning(f"Não foi possível transcrever o vídeo: {video['title']} ({video['id']})")
+                                    
                 if transcripts:
                     st.success("Transcrições geradas com sucesso!")
                     
@@ -215,6 +221,6 @@ else:
         else:
             st.warning("Por favor, insira o nome ou URL do canal!")
 
-# Rodapé atualizado
+# Rodapé
 st.markdown("---")
 st.markdown("Desenvolvido com ❤️ por GMC")
